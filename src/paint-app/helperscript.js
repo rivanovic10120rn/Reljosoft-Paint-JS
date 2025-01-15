@@ -16,7 +16,8 @@ let redoHistory = [];
 let currentStep = 0;
 let isDrawing = false;
 let brushSize = 5;
-let selectedColor = "#000";
+// let selectedColor = "#000";
+let selectedColor = "rgb(0, 0, 0)"
 let selectedTool = "brush";
 let prevMousePoint = { x: 0, y: 0 };
 let canvasSnapshot = null;
@@ -137,10 +138,12 @@ const drawRect = (position) => {
 // Crtanje kruga
 const drawCircle = (position) => {
     context.beginPath();
-    let r = Math.sqrt(Math.pow((prevMousePoint.x - position.x), 2) + Math.pow((prevMousePoint.y - position.y)), 2);
+    let r = Math.sqrt(Math.pow((prevMousePoint.x - position.x), 2)
+                        + Math.pow((prevMousePoint.y - position.y), 2));
     context.arc(prevMousePoint.x, prevMousePoint.y, r, 0, 2* Math.PI);
 
     fillShapeCheckbox.checked ? context.fill() : context.stroke();
+    context.closePath();
 }
 
 // Crtanje trougla
@@ -165,6 +168,9 @@ const drawStart = (e) => {
     context.strokeStyle = selectedColor;
     context.fillStyle = selectedColor;
     canvasSnapshot = context.getImageData(0, 0, canvas.width, canvas.height);
+    if (selectedTool === "fill") {
+        floodFill(prevMousePoint);
+    }
 }
 
 // Funkcija za saaamo crtanje
@@ -267,3 +273,126 @@ canvas.addEventListener("touchmove", drawing);
 canvas.addEventListener("mouseup", drawStop);
 canvas.addEventListener("mouseleave", drawStop);
 canvas.addEventListener("touchend", drawStop);
+
+
+
+
+// Flood fill function za Fill Color tool
+function floodFill(position) {
+    const imageData = context.getImageData(0,0, canvas.width,canvas.height);
+    console.log(context.getImageData(0, 0, canvas.width, canvas.height));
+    const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
+    // const stack = [[position.x, position.y]];
+    const stack = [[Math.floor(position.x), Math.floor(position.y)]];
+    const visited = new Set();
+    let pixelCount = 0;
+
+    let targetColor = getPixelColor(data, position.x, position.y);
+
+    //tretiramo transparentne tjst "neobojene" piksele kao bele
+    if (targetColor[3] === 0) {
+        targetColor[3] = 255;
+    }
+
+    if (colorsMatch(targetColor, selectedColor)) return;
+
+    while(stack.length > 0){
+        const [x,y] = stack.pop();
+        console.log("Processing pixel at", x, y);
+        const cx = Math.floor(x);
+        const cy = Math.floor(y);
+        console.log("Ensure pixels are integers", cx, cy);
+
+        const key = `${cx},${cy}`;
+        if (visited.has(key)) continue;
+        visited.add(key);
+
+        //proveravamo granice canvasa
+        // if(cx < 0 || cy < 0 || cx >= canvas.width || cy >= canvas.height) {
+        //     console.log(`Skipping out-of-bounds pixel at (${cx}, ${cy})`);
+        //     continue;
+        // }
+
+        const currentColor = getPixelColor(data, cx, cy);
+        // console.log("Current:", currentColor, "Target:", targetColor);
+
+        //ova linija se preskace ukoliko nisu iste boje - samo nam je za exit kada se nadje ista boja
+        if (!colorsMatch(currentColor, targetColor)) {
+            console.log(`Color mismatch at (${cx}, ${cy}):`, currentColor, "Expected:", targetColor);
+            continue;
+        }
+
+        // farbamo pixel
+        setPixelColor(data, cx, cy, selectedColor);
+
+        //dodajemo komsije
+        stack.push([cx - 1, cy]); //levo
+        stack.push([cx + 1, cy]); //desno
+        stack.push([cx, cy - 1]); //dole
+        stack.push([cx, cy + 1]); //gore
+
+        // Progress tracking (for large fills)
+        pixelCount++;
+        if (pixelCount % 1000 === 0) {
+            console.log(`Processed ${pixelCount} pixels...`);
+        }
+
+    }
+
+    console.log("Updating canvas with modified imageData...");
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.putImageData(imageData, 0, 0);
+}
+
+function getPixelColor (data, x, y) {
+    const index = (y * canvas.width +x) *4;
+    const r = data[index];
+    const g = data[index + 1];
+    const b = data[index + 2];
+    const a = data[index + 3];
+
+    console.log(`Pixel at (${x}, ${y}):`, [r,g,b,a]);
+    if(a === 0) return [r,g,b,255];
+    return [r,g,b,a];
+}
+
+function setPixelColor (data, x, y, color) {
+    const index = (y * canvas.width + x) * 4;
+    const rgb = getRGB(selectedColor);
+    data[index] = rgb[0];     // Red
+    data[index + 1] = rgb[1]; // Green
+    data[index + 2] = rgb[2]; // Blue
+    data[index + 3] = 255;     // Alpha (fully opaque)
+    console.log(`New color data at (${x}, ${y}):`, [
+        data[index],
+        data[index + 1],
+        data[index + 2],
+        data[index + 3],
+    ]);
+}
+
+function colorsMatch(color1, color2) {
+    const match =
+        color1[0] === color2[0] &&
+        color1[1] === color2[1] &&
+        color1[2] === color2[2] &&
+        color1[3] === color2[3];
+
+    console.log(`Comparing colors:`, color1, color2, "Match:", match);
+    return match;
+}
+
+function getRGB(rgbString){
+    // Use a regular expression to extract the numbers from the string
+    const match = rgbString.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+
+    // If the string is not in the correct format, return null or handle the error
+    if (!match) {
+        throw new Error("Invalid RGB format");
+    }
+
+    // Convert the matched values to integers and return them as an array
+    return [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])];
+}
