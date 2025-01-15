@@ -300,27 +300,24 @@ function floodFill(position) {
 
     while(stack.length > 0){
         const [x,y] = stack.pop();
-        console.log("Processing pixel at", x, y);
         const cx = Math.floor(x);
         const cy = Math.floor(y);
-        console.log("Ensure pixels are integers", cx, cy);
 
         const key = `${cx},${cy}`;
         if (visited.has(key)) continue;
         visited.add(key);
 
-        //proveravamo granice canvasa
-        // if(cx < 0 || cy < 0 || cx >= canvas.width || cy >= canvas.height) {
-        //     console.log(`Skipping out-of-bounds pixel at (${cx}, ${cy})`);
-        //     continue;
-        // }
+        // proveravamo granice canvasa
+        if(cx < 0 || cy < 0 || cx >= canvas.width || cy >= canvas.height) {
+            console.log(`Skipping out-of-bounds pixel at (${cx}, ${cy})`);
+            continue;
+        }
 
         const currentColor = getPixelColor(data, cx, cy);
         // console.log("Current:", currentColor, "Target:", targetColor);
 
         //ova linija se preskace ukoliko nisu iste boje - samo nam je za exit kada se nadje ista boja
         if (!colorsMatch(currentColor, targetColor)) {
-            console.log(`Color mismatch at (${cx}, ${cy}):`, currentColor, "Expected:", targetColor);
             continue;
         }
 
@@ -341,7 +338,6 @@ function floodFill(position) {
 
     }
 
-    console.log("Updating canvas with modified imageData...");
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.putImageData(imageData, 0, 0);
 }
@@ -365,12 +361,6 @@ function setPixelColor (data, x, y, color) {
     data[index + 1] = rgb[1]; // Green
     data[index + 2] = rgb[2]; // Blue
     data[index + 3] = 255;     // Alpha (fully opaque)
-    console.log(`New color data at (${x}, ${y}):`, [
-        data[index],
-        data[index + 1],
-        data[index + 2],
-        data[index + 3],
-    ]);
 }
 
 function colorsMatch(color1, color2) {
@@ -380,7 +370,6 @@ function colorsMatch(color1, color2) {
         color1[2] === color2[2] &&
         color1[3] === color2[3];
 
-    console.log(`Comparing colors:`, color1, color2, "Match:", match);
     return match;
 }
 
