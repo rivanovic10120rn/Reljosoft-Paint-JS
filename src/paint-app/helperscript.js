@@ -9,6 +9,7 @@ const undoredoButtons = document.querySelectorAll(".actions-toolbar li");
 const clearCanvasButton = document.querySelector(".clear");
 const saveImageButton = document.querySelector(".save");
 const context = canvas.getContext("2d");
+// const context = canvas.getContext("2d", {alpha: false});
 
 // Draw state
 let drawingHistory = [];
@@ -30,6 +31,7 @@ const initCanvas = () => {
     canvas.width = canvasRect.width * dpr;
     canvas.height = canvasRect.height * dpr;
     context.scale(dpr, dpr);
+    // context.imageSmoothingEnabled= false;
 }
 
 // Canvas reset
@@ -281,14 +283,13 @@ canvas.addEventListener("touchend", drawStop);
 // NOVI FLOOD FILL
 
 function floodFill(position, color) {
-    console.log(`FloodFill start`);
-    let pixel_stack = [{x: position.x, y: position.y}];
+    let pixelStack = [{x: position.x, y: position.y}];
     let pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-    let linear_cords = (position.y * canvas.width + position.x) * 4;
-    let original_color = {
-        r: pixels.data[linear_cords],
-        g: pixels.data[linear_cords + 1],
-        b: pixels.data[linear_cords + 2],
+    let linearCoordinates = (position.y * canvas.width + position.x) * 4;
+    let originalColor = {
+        r: pixels.data[linearCoordinates],
+        g: pixels.data[linearCoordinates + 1],
+        b: pixels.data[linearCoordinates + 2],
         a: 255
     };
 
@@ -296,89 +297,88 @@ function floodFill(position, color) {
         color[3] = 255;
     }
 
-    if (original_color.r === color[0] &&
-        original_color.g === color[1] &&
-        original_color.b === color[2])
+    if (originalColor.r === color[0] &&
+        originalColor.g === color[1] &&
+        originalColor.b === color[2])
     {
         console.log(`First pixel is matching, aborting floodFill`);
         return;
     }
 
-    let new_pixel;
+    let newPixel;
     let x;
     let y;
-    while (pixel_stack.length > 0) {
-        new_pixel = pixel_stack.shift();
-        x = new_pixel.x;
-        y = new_pixel.y;
+    while (pixelStack.length > 0) {
+        newPixel = pixelStack.shift();
+        x = newPixel.x;
+        y = newPixel.y;
 
         //console.log( x + ", " + y ) ;
 
-
-        linear_cords = (y * canvas.width + x) * 4;
+        linearCoordinates = (y * canvas.width + x) * 4;
         while (y-- >= 0 &&
-        (   pixels.data[linear_cords] == original_color.r &&
-            pixels.data[linear_cords + 1] == original_color.g &&
-            pixels.data[linear_cords + 2] == original_color.b)) {
-            linear_cords -= canvas.width * 4;
+        (   pixels.data[linearCoordinates] == originalColor.r &&
+            pixels.data[linearCoordinates + 1] == originalColor.g &&
+            pixels.data[linearCoordinates + 2] == originalColor.b)) {
+            linearCoordinates -= canvas.width * 4;
         }
-        linear_cords += canvas.width * 4;
+        linearCoordinates += canvas.width * 4;
         y++;
 
-        let reached_left = false;
-        let reached_right = false;
+        let reachedLeft = false;
+        let reachedRight = false;
         while (y++ < canvas.height &&
-        (   pixels.data[linear_cords] == original_color.r &&
-            pixels.data[linear_cords + 1] == original_color.g &&
-            pixels.data[linear_cords + 2] == original_color.b))
+        (   pixels.data[linearCoordinates] == originalColor.r &&
+            pixels.data[linearCoordinates + 1] == originalColor.g &&
+            pixels.data[linearCoordinates + 2] == originalColor.b))
         {
-            pixels.data[linear_cords] = color[0];
-            pixels.data[linear_cords + 1] = color[1];
-            pixels.data[linear_cords + 2] = color[2];
+            pixels.data[linearCoordinates] = color[0];
+            pixels.data[linearCoordinates + 1] = color[1];
+            pixels.data[linearCoordinates + 2] = color[2];
 
             if (x > 0) {
-                if (pixels.data[linear_cords - 4] == original_color.r &&
-                    pixels.data[linear_cords - 4 + 1] == original_color.g &&
-                    pixels.data[linear_cords - 4 + 2] == original_color.b) {
-                    if (!reached_left) {
-                        // if(is_in_pixel_stack(x - 1, y, pixel_stack)){
-                        //     pixel_stack.push({x: x - 1, y: y});
-                        //     reached_left = true;
+                if (pixels.data[linearCoordinates - 4] == originalColor.r &&
+                    pixels.data[linearCoordinates - 4 + 1] == originalColor.g &&
+                    pixels.data[linearCoordinates - 4 + 2] == originalColor.b) {
+                    if (!reachedLeft) {
+                        // if(isInPixelStack(x - 1, y, pixelStack)){
+                        //     pixelStack.push({x: x - 1, y: y});
+                        //     reachedLeft = true;
                         // }
-                        pixel_stack.push({x: x - 1, y: y});
-                        reached_left = true;
+                        pixelStack.push({x: x - 1, y: y});
+                        reachedLeft = true;
                     }
-                } else if (reached_left) {
-                    reached_left = false;
+                } else if (reachedLeft) {
+                    reachedLeft = false;
                 }
             }
 
             if (x < canvas.width - 1) {
-                if (pixels.data[linear_cords + 4] == original_color.r &&
-                    pixels.data[linear_cords + 4 + 1] == original_color.g &&
-                    pixels.data[linear_cords + 4 + 2] == original_color.b) {
-                    if (!reached_right) {
-                        // if(is_in_pixel_stack(x + 1, y, pixel_stack)) {
-                        //     pixel_stack.push({x: x + 1, y: y});
-                        //     reached_right = true;
+                if (pixels.data[linearCoordinates + 4] == originalColor.r &&
+                    pixels.data[linearCoordinates + 4 + 1] == originalColor.g &&
+                    pixels.data[linearCoordinates + 4 + 2] == originalColor.b) {
+                    if (!reachedRight) {
+                        // if(isInPixelStack(x + 1, y, pixelStack)) {
+                        //     pixelStack.push({x: x + 1, y: y});
+                        //     reachedRight = true;
                         // }
-                        pixel_stack.push({x: x + 1, y: y});
-                        reached_right = true;
+                        pixelStack.push({x: x + 1, y: y});
+                        reachedRight = true;
                     }
-                } else if (reached_right) {
-                    reached_right = false;
+                } else if (reachedRight) {
+                    reachedRight = false;
                 }
             }
 
-            linear_cords += canvas.width * 4;
+            linearCoordinates += canvas.width * 4;
         }
     }
     context.putImageData( pixels, 0, 0 ) ;
 }
 
-function is_in_pixel_stack( x, y, pixel_stack ) {
-    for(let i=0 ; i<pixel_stack.length ; i++ ) {
-        if( pixel_stack[i].x==x && pixel_stack[i].y==y ) {
+function isInPixelStack( x, y, pixelStack ) {
+    for(let i=0 ; i<pixelStack.length ; i++ ) {
+        if( pixelStack[i].x==x && pixelStack[i].y==y ) {
             return true ;
         }
     }
