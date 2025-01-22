@@ -170,6 +170,10 @@ const drawStart = (e) => {
     canvasSnapshot = context.getImageData(0, 0, canvas.width, canvas.height);
     if (selectedTool === "fill") {
         floodFill(prevMousePoint, getRGB(selectedColor));
+    } else if (selectedTool === "brush" || selectedTool === "eraser") {
+        context.strokeStyle = selectedTool === "eraser" ? "#fff" : selectedColor;
+        context.lineTo(prevMousePoint.x, prevMousePoint.y);
+        context.stroke();
     }
 }
 
