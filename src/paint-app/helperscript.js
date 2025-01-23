@@ -31,6 +31,7 @@ const initCanvas = () => {
     canvas.width = canvasRect.width * dpr;
     canvas.height = canvasRect.height * dpr;
     context.scale(dpr, dpr);
+    setupImageUploader();
     // context.imageSmoothingEnabled= false;
 }
 
@@ -269,8 +270,8 @@ window.addEventListener("load", () => {
     loadLocalStorageDrawing();
 })
 
-window.addEventListener("orientationchange", resetDrawingState);
-window.addEventListener("resize", resetCanvas);
+// window.addEventListener("orientationchange", resetDrawingState);
+// window.addEventListener("resize", resetCanvas);
 
 canvas.addEventListener("mousedown", drawStart);
 canvas.addEventListener("touchstart", drawStart);
@@ -530,3 +531,41 @@ function getRGB(rgbString){
     // Convert the matched values to integers and return them as an array
     return [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])];
 }
+
+// Image upload
+
+function setupImageUploader() {
+    const imageUploader = document.getElementById("imageUploader");
+
+    imageUploader.addEventListener("change", (event) => {
+        const file = event.target.files[0];
+
+        if (file && file.type.startsWith("image/")) {
+            const reader = new FileReader();
+
+            reader.onload = function (e) {
+                const img = new Image();
+
+                img.onload = function () {
+                    // Resize canvas to match image dimensions
+                    // canvas.width = img.width;
+                    // canvas.height = img.height;
+
+                    // Draw the image on the canvas
+                    context.drawImage(img, 0, 0, img.width, img.height);
+                    saveDrawingState();
+                };
+
+                img.src = e.target.result;
+                // img.src = e.target.result.toString();
+            };
+
+            reader.readAsDataURL(file);
+        } else {
+            alert("Please upload a valid image file.");
+        }
+    });
+}
+
+// Call the setup function when the page loads
+// setupImageUploader();
