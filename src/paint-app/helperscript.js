@@ -16,7 +16,7 @@ let drawingHistory = [];
 let redoHistory = [];
 let currentStep = 0;
 let isDrawing = false;
-let brushSize = 5;
+let brushSize = 25;
 // let selectedColor = "#000";
 let selectedColor = "rgb(0, 0, 0)"
 let selectedTool = "brush";
@@ -270,8 +270,11 @@ window.addEventListener("load", () => {
     loadLocalStorageDrawing();
 })
 
-// window.addEventListener("orientationchange", resetDrawingState);
-// window.addEventListener("resize", resetCanvas);
+window.addEventListener("orientationchange", resetDrawingState);
+window.addEventListener("resize", () => {
+    resetCanvas();
+    loadLocalStorageDrawing();
+})
 
 canvas.addEventListener("mousedown", drawStart);
 canvas.addEventListener("touchstart", drawStart);
@@ -281,8 +284,8 @@ canvas.addEventListener("mouseup", drawStop);
 canvas.addEventListener("mouseleave", drawStop);
 canvas.addEventListener("touchend", drawStop);
 
-// NOVI FLOOD FILL
 
+// NOVI FLOOD FILL
 function floodFill(position, color) {
     let pixelStack = [{x: position.x, y: position.y}];
     let pixels = context.getImageData(0, 0, canvas.width, canvas.height);
@@ -566,6 +569,3 @@ function setupImageUploader() {
         }
     });
 }
-
-// Call the setup function when the page loads
-// setupImageUploader();
