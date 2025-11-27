@@ -12,8 +12,8 @@
 <body>
   <div class="container">
     <section class="tools-board">
-      <div class="all-toolbars shapes-toolbar" >
-        <div class="row ">
+      <div class="all-toolbars " >
+        <div class="row shapes-toolbar">
           <label class="title"> Shapes </label>
           <ul class="options shapes">
             <li class="option shape tool" id="line">
@@ -33,7 +33,7 @@
               <span> Triangle </span>
             </li>
             <li class="option">
-              <input type="checkbox" id="fill-shape">
+              <input type="checkbox" class="big-checkbox" id="fill-shape">
               <label for="fill-shape"> Fill Shape </label>
             </li>
           </ul>
@@ -42,15 +42,15 @@
           <label class="title"> Tools </label>
           <ul class="options tools">
             <li class="option tool active" id="brush">
-              <img src="../assets/icons/tools/icons8-brush-48.png">
+              <img src="../assets/icons/tools/icons8-brush-32.png">
               <span class="name"> Brush </span>
             </li>
             <li class="option tool" id="eraser">
-              <img src="../assets/icons/tools/icons8-eraser-48 (1).png">
+              <img src="../assets/icons/tools/icons8-eraser-32.png">
               <span class="name"> Eraser </span>
             </li>
             <li class="option tool" id="fill">
-              <span><img src="../assets/icons/tools/icons8-fill-color-48.png"></span>
+              <span><img src="../assets/icons/tools/icons8-fill-color-32.png"></span>
               <span class="name"> Fill Color </span>
             </li>
             <li class="option" id="slider">
@@ -75,27 +75,31 @@
             <label class="title">Quick Actions</label>
             <ul class="options actions">
               <li class="option action" id="undo">
-                IKONICA
+                <span><img src="../assets/icons/tools/icons8-undo-32.png"></span>
                 <span class="name">Undo</span>
               </li>
               <li class="option action" id="redo">
-                IKONICA
+                <span><img src="../assets/icons/tools/icons8-redo-32.png"></span>
                 <span class="name">Redo</span>
               </li>
-              <li class="option action" id="copy">
-                IKONICA
-                <span class="name">Copy</span>
-              </li>
-              <li class="option action" id="paste">
-                IKONICA
-                <span class="name">Paste</span>
-              </li>
+<!--              <li class="option action" id="copy">-->
+<!--                <span><img src="../assets/icons/tools/icons8-copy-32.png"></span>-->
+<!--                <span class="name">Copy</span>-->
+<!--              </li>-->
+<!--              <li class="option action" id="paste">-->
+<!--                <span><img src="../assets/icons/tools/icons8-paste-32.png"></span>-->
+<!--                <span class="name">Paste</span>-->
+<!--              </li>-->
             </ul>
           </div>
         </div>
       </div>
       <div class="row buttons">
-        <input type="file" id="imageUploader" accept="image/*">
+        <input type="file" id="imageUploader" accept="image/*" style="display: none">
+        <button class="upload" id="uploadBtn">
+          <span class="icon"><img src="../assets/icons/tools/icons8-save-32.png"> </span>
+          <span class="name"> Upload Image </span>
+        </button>
         <button class="clear">
           <span class="icon"><img src="../assets/icons/tools/icons8-clear-32.png"> </span>
           <span class="name"> Clear Canvas </span>

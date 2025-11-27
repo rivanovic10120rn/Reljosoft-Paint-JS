@@ -8,6 +8,7 @@ const customColor = document.querySelector("#custom-color");
 const undoredoButtons = document.querySelectorAll(".actions-toolbar li");
 const clearCanvasButton = document.querySelector(".clear");
 const saveImageButton = document.querySelector(".save");
+const insertImageButton = document.querySelector(".upload");
 const context = canvas.getContext("2d");
 // const context = canvas.getContext("2d", {alpha: false});
 
@@ -263,6 +264,11 @@ saveImageButton.addEventListener("click", () => {
 clearCanvasButton.addEventListener("click", () => {
     if (confirm("Are you sure you want to clear the canvas?")) resetDrawingState();
 });
+
+// Upload slike preko buttona
+insertImageButton.addEventListener("click", () => {
+        document.getElementById('imageUploader').click();
+})
 
 // Ucitavanje poslednje slike
 window.addEventListener("load", () => {

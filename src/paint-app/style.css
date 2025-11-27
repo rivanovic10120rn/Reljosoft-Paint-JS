@@ -16,7 +16,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: bisque;
+    background: #C03221;
     height: 100vh;
 }
 
@@ -27,13 +27,17 @@ body {
     padding: 10px;
     display: flex;
     user-select: none;
-    background: rebeccapurple;
+    background: #F2D0A4;
 }
 
 section {
     border-radius: 10px; /* 7px lepo radi isto */
-    background: white;
+    background: #F7F7FF;
     box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+.tools-board {
+    background: #F7F7FF;
 }
 
 .tools-board {
@@ -46,12 +50,12 @@ section {
 
 .tools-board .row {
     margin-bottom: 20px;
-    background: saddlebrown;
+    /*background: saddlebrown;*/
     width: 100%;
 }
 
 .row .title{
-    color: chartreuse;
+    color: #25283D;
     font-size: 1rem;
 }
 
@@ -94,7 +98,7 @@ section {
 }
 
 input[type="checkbox"]:checked~label {
-    color: maroon;
+    color: #25283D;
 }
 
 .option #size-slider {
@@ -109,7 +113,7 @@ input[type="checkbox"]:checked~label {
 }
 
 .tools-board .colors {
-    color: maroon;
+    /*color: maroon;*/
     display: flex;
     justify-content: space-between;
 }
@@ -141,7 +145,7 @@ input[type="checkbox"]:checked~label {
 
 .colors .option:nth-child(5) {
     background-color: ghostwhite;
-    background-image: linear-gradient(lightblue, ghostwhite);
+    background-image: linear-gradient(lightblue, darkgoldenrod);
 }
 
 .colors .option.active:nth-child(5) {
@@ -225,6 +229,15 @@ input[type="checkbox"]:checked~label {
     background: greenyellow;
 }
 
+.buttons .upload {
+    color: royalblue;
+    border: 1px solid royalblue;
+}
+
+.buttons .upload:hover {
+    background: cornflowerblue;
+}
+
 .drawing-board {
     flex: 1;
     overflow: hidden;
@@ -235,6 +248,13 @@ input[type="checkbox"]:checked~label {
     height: 100%;
     /*object-fit: contain;*/
     border-radius: 7px;
+}
+
+.big-checkbox {
+    transform: scale(1.4);     /* Make it bigger */
+    -webkit-transform: scale(1.4);
+    padding-left: 10px;
+    padding-bottom: 10px;
 }
 
 /*deo za responsiveness*/
