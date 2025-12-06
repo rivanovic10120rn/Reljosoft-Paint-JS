@@ -191,7 +191,7 @@ const drawing = (e) => {
 
     if (selectedTool === "brush" || selectedTool === "eraser") {
         context.strokeStyle = selectedTool === "eraser" ? "#fff" : selectedColor;
-        context.lineTo(position.x, position.y);
+        context.lineTo(Math.round(position.x), Math.round(position.y));
         context.stroke();
     } else if(selectedTool === "line") {
         drawLine(position);
@@ -575,3 +575,302 @@ function setupImageUploader() {
         }
     });
 }
+
+//SELECTION ZONE BABY
+
+let selectionMode = "regular"; // regular | lasso
+let isMouseDown = false;
+let selectionX = 0;
+let selectionY = 0;
+let canvasBackup = null;
+let activeSelection = null; // stores selection info
+let lassoPoints = [];
+
+// Selection data structure:
+// {x, y, w, h, imageData, dragging, offsetX, offsetY, resizing, resizeHandle}
+
+canvas.addEventListener("mousedown", startSelection);
+canvas.addEventListener("mousemove", drawSelection);
+canvas.addEventListener("mouseup", stopSelection);
+
+function startSelection(e) {
+    const selectionRectangle = canvas.getBoundingClientRect();
+    selectionX = e.clientX - selectionRectangle.left;
+    selectionY = e.clientY - selectionRectangle.right;
+    isMouseDown = true;
+    canvasBackup = context.getImageData(0,0, canvas.width, canvas.height);
+
+    if (activeSelection) {
+        const handle = isOverResizeHandle(selectionX, selectionY);
+        if(handle) {
+            activeSelection.resizing = true;
+            activeSelection.resizeHandle = handle;
+            return;
+        }
+
+        if (insideSelection(selectionX, selectionY)){
+            activeSelection.dragging = true;
+            activeSelection.offsetX = selectionX - activeSelection.x;
+            activeSelection.offsetY = selectionY - activeSelection.y;
+            return;
+        }
+
+        activeSelection = null;
+    }
+
+    if (selectionMode === "regular") {
+        activeSelection = {x: selectionX, y: selectionY, width: 0, height: 0};
+    }
+
+    if (selectionMode === "lasso") {
+        lassoPoints = [{x: selectionX, y: selectionY}];
+    }
+}
+
+function drawSelection(e) {
+    if(!isMouseDown) return;
+    const rectangle = canvas.getBoundingClientRect();
+    const x = e.clientX - rectangle.left;
+    const y = e.clientY - rectangle.top;
+
+    if(activeSelection?.dragging){
+        activeSelection.x = x - activeSelection.offsetX;
+        activeSelection.y = y - activeSelection.offsetY;
+        redrawSelection();
+        return;
+    }
+
+    if(activeSelection?.resizing){
+        resizeSelection(x,y);
+        redrawSelection();
+        return;
+    }
+
+    context.putImageData(canvasBackup, 0, 0);
+    if (selectionMode === "regular") {
+        activeSelection.width = x - selectionX;
+        activeSelection.height = y - selectionY;
+        drawRectOutline(activeSelection);
+    }
+    if (selectionMode === "lasso") {
+        lassoPoints.push({x,y});
+        drawLassoOutline();
+    }
+}
+
+function stopSelection(e) {
+    isMouseDown = false;
+    if (selectionMode === "regular") finalizeRectSelection();
+    if (selectionMode === "lasso") finalizeLassoSelection();
+}
+
+// RECTANGLE SELECT (EL NORMAL) BBY
+
+function drawRectOutline(selection){
+    context.strokeStyle = "black";
+    context.setLineDash([6,3]);
+    context.strokeRect(selection.x, selection.y, selection.width, selection.height);
+}
+
+function finalizeRectSelection() {
+    const selection = fixRect(activeSelection);
+    activeSelection = selection;
+    activeSelection.imageData = context.getImageData(selection.x, selection.y, selection.width, selection.height);
+    redrawSelection();
+}
+
+// LASSO SELECT BABY (ubicu se)
+
+function drawLassoOutline() {
+    context.strokeStyle = "black";
+    context.setLineDash([6,3]);
+    context.beginPath();
+    lassoPoints.forEach((p, i) => {
+        if (i === 0) context.moveTo(p.x, p.y);
+        else context.lineTo(p.x, p.y);
+    });
+    context.stroke();
+}
+
+function finalizeLassoSelection() {
+    context.putImageData(canvasBackup, 0, 0);
+    const bounds = getLassoBounds();
+    const temporaryCanvas = document.createElement("canvas");
+    temporaryCanvas.width = bounds.width;
+    temporaryCanvas.height = bounds.height;
+    const temporaryContext = temporaryCanvas.getContext("2d");
+    temporaryContext.putImageData(context.getImageData(bounds.x,bounds.y,bounds.width,bounds.height), 0 , 0);
+
+    activeSelection = {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        imageData: temporaryContext.getImageData(0,0,bounds.width,bounds.height),
+    };
+
+    redrawSelection();
+}
+
+function getLassoBounds() {
+    const xs = lassoPoints.map(p => p.x);
+    const ys = lassoPoints.map(p => p.y);
+    return {
+        x: Math.min(...xs),
+        y: Math.min(...ys),
+        width: Math.max(...xs) - Math.min(...xs),
+        height: Math.max(...ys) - Math.min(...ys),
+    };
+}
+
+// DRAG & MOVE BABY
+
+function insideSelection(x,y) {
+    const selection = activeSelection;
+    return x >= selection.x && x <= selection.x + selection.width && y >= selection.y && y <= selection.y + selection.height;
+}
+
+// RESIZE HANDLES BABY
+
+function drawResizeHandles(selection){
+    const size = 8;
+    const handles = getResizeHandles(selection);
+
+    context.fillStyle = "white";
+    context.strokeStyle = "black";
+    handles.forEach(i => {
+        context.fillRect(i.x - size/2, i.y - size/2, size, size);
+        context.strokeRect(i.x - size/2, i.y - size/2, size, size);
+    });
+}
+
+function getResizeHandles(selected){
+    return[
+        {name: "topleft", x: selected.x, y: selected.y},
+        {name: "topright", x: selected.x + selected.width , y: selected.y},
+        {name: "bottomleft", x: selected.x, y: selected.y + selected.height },
+        {name: "bottomright", x: selected.x + selected.width, y: selected.y + selected.height},
+    ];
+}
+
+function isOverResizeHandle(x,y) {
+    const handles = getResizeHandles(activeSelection);
+    const size = 10;
+
+    for (let i of handles) {
+        if (x >= i.x - size && x <= i.x + size && y >= i.y - size && y <= i.y){
+            return i.name;
+        }
+    }
+    return null;
+}
+
+function resizeSelection(mx, my) {
+    const selection = activeSelection;
+    const old = { ...s };
+
+    if (selection.resizeHandle === "bottomright") {
+        selection.width = mx - selection.x;
+        selection.height = my - selection.y;
+    }
+    if (selection.resizeHandle === "topright") {
+        selection.height = old.height + (old.height - my);
+        selection.y = my;
+        selection.width = mx - old.x;
+    }
+    if (selection.resizeHandle === "bottomleft") {
+        selection.width = old.width + (old.x - mx);
+        selection.x = mx;
+        selection.height = my - old.y;
+    }
+    if (selection.resizeHandle === "topleft") {
+        selection.width = old.width + (old.x - mx);
+        selection.x = mx;
+        selection.height = old.height + (old.y - my);
+        selection.y = my;
+    }
+}
+
+// COPY PASTE (DELETE MOZDA?)
+
+function copySelection(){
+    return activeSelection ? activeSelection.imageData : null;
+}
+
+function pasteSelection(data) {
+    if (!data) return;
+    activeSelection = {
+        x: 20,
+        y: 20,
+        width: data.width,
+        height: data.height,
+        imageData: data,
+    };
+    redrawSelection();
+}
+
+function deleteSelection(){
+    if(!activeSelection) return;
+    context.clearRect(activeSelection.x, activeSelection.y, activeSelection.width, activeSelection.height);
+    activeSelection = null;
+}
+
+// RAZONODA BEBO
+
+function redrawSelection() {
+    context.putImageData(canvasBackup, 0, 0);
+    if(!activeSelection) return;
+
+    context.putImageData(activeSelection.imageData, activeSelection.x, activeSelection.y);
+    drawRectOutline(activeSelection);
+    drawResizeHandles(activeSelection);
+}
+
+function fixRect(selection) {
+    let {x,y,width,height} = selection;
+    if (width<0) {
+        x += width;
+        width =Math.abs(width);
+    }
+    if (height<0) {
+        y += height;
+        height = Math.abs(height);
+    }
+    return {x,y,width,height};
+}
+
+//PRONADJENO NA NETU
+// --- Keyboard Shortcuts ---
+// Add this near the bottom of your script, after selection logic is initialized
+window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key.toLowerCase() === 'c') {
+// CTRL + C => Copy
+        if (selection && selection.active) {
+            copySelection();
+            console.log('Copied selection');
+        }
+        e.preventDefault();
+    }
+    if (e.ctrlKey && e.key.toLowerCase() === 'v') {
+// CTRL + V => Paste
+        if (clipboard) {
+            pasteSelection();
+            console.log('Pasted selection');
+        }
+        e.preventDefault();
+    }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+// DELETE => Remove selection
+        if (selection && selection.active) {
+            deleteSelection();
+            console.log('Deleted selection');
+        }
+        e.preventDefault();
+    }
+    if (e.key === 'Escape') {
+// ESC => Clear selection
+        deleteSelection(); //clearSelection();
+        console.log('Selection cancelled');
+        e.preventDefault();
+    }
+});
