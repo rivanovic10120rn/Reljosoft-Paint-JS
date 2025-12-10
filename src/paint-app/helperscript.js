@@ -353,243 +353,143 @@ canvas.addEventListener("mouseup", drawStop);
 canvas.addEventListener("mouseleave", drawStop);
 canvas.addEventListener("touchend", drawStop);
 
+//Najnoviji fill bez white halo of doom
 
-// NOVI FLOOD FILL
-function floodFill(position, color) {
-    let pixelStack = [{x: position.x, y: position.y}];
-    let pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-    let linearCoordinates = (position.y * canvas.width + position.x) * 4;
-    let originalColor = {
-        r: pixels.data[linearCoordinates],
-        g: pixels.data[linearCoordinates + 1],
-        b: pixels.data[linearCoordinates + 2],
+function colorsEqualApproxRGBA(r1, g1, b1, a1, r2, g2, b2, a2, tolerance = 0) {
+    return (
+        Math.abs(r1 - r2) <= tolerance &&
+        Math.abs(g1 - g2) <= tolerance &&
+        Math.abs(b1 - b2) <= tolerance
+    );
+}
+
+// SIMPLE 4-WAY FLOOD FILL
+function floodFill(position, colorArray) {
+    const width = canvas.width;
+    const height = canvas.height;
+
+    const startX = Math.floor(position.x);
+    const startY = Math.floor(position.y);
+
+    if (startX < 0 || startX >= width || startY < 0 || startY >= height) return;
+
+    const imageData = context.getImageData(0, 0, width, height);
+    const data = imageData.data;
+
+    const startIndex = (startY * width + startX) * 4;
+
+    const target = {
+        r: data[startIndex],
+        g: data[startIndex + 1],
+        b: data[startIndex + 2],
+        a: data[startIndex + 3]
+    };
+
+    const fill = {
+        r: colorArray[0],
+        g: colorArray[1],
+        b: colorArray[2],
         a: 255
     };
 
-    if (!(color[3] === 255)) {
-        color[3] = 255;
-    }
-
-    if (originalColor.r === color[0] &&
-        originalColor.g === color[1] &&
-        originalColor.b === color[2])
-    {
-        console.log(`First pixel is matching, aborting floodFill`);
+    // If start pixel already looks like fill color, do nothing
+    if (colorsEqualApproxRGBA(
+        target.r, target.g, target.b, target.a,
+        fill.r, fill.g, fill.b, fill.a,
+        0
+    )) {
         return;
     }
 
-    let newPixel;
-    let x;
-    let y;
-    while (pixelStack.length > 0) {
-        newPixel = pixelStack.shift();
-        x = newPixel.x;
-        y = newPixel.y;
+    const tolerance = 0; // pure region by exact color; we’ll fix halos separately
 
-        //console.log( x + ", " + y ) ;
+    const visited = new Uint8Array(width * height);
+    const stack = [];
+    stack.push([startX, startY]);
 
-        linearCoordinates = (y * canvas.width + x) * 4;
-        while (y-- >= 0 &&
-        (   pixels.data[linearCoordinates] == originalColor.r &&
-            pixels.data[linearCoordinates + 1] == originalColor.g &&
-            pixels.data[linearCoordinates + 2] == originalColor.b)) {
-            linearCoordinates -= canvas.width * 4;
+    while (stack.length > 0) {
+        const [x, y] = stack.pop();
+
+        if (x < 0 || x >= width || y < 0 || y >= height) continue;
+
+        const idx1D = y * width + x;
+        if (visited[idx1D]) continue;
+        visited[idx1D] = 1;
+
+        const idx = idx1D * 4;
+        const r = data[idx];
+        const g = data[idx + 1];
+        const b = data[idx + 2];
+        const a = data[idx + 3];
+
+        if (!colorsEqualApproxRGBA(r, g, b, a, target.r, target.g, target.b, target.a, tolerance)) {
+            continue;
         }
-        linearCoordinates += canvas.width * 4;
-        y++;
 
-        let reachedLeft = false;
-        let reachedRight = false;
-        while (y++ < canvas.height &&
-        (   pixels.data[linearCoordinates] == originalColor.r &&
-            pixels.data[linearCoordinates + 1] == originalColor.g &&
-            pixels.data[linearCoordinates + 2] == originalColor.b))
-        {
-            pixels.data[linearCoordinates] = color[0];
-            pixels.data[linearCoordinates + 1] = color[1];
-            pixels.data[linearCoordinates + 2] = color[2];
+        // Fill pixel
+        data[idx] = fill.r;
+        data[idx + 1] = fill.g;
+        data[idx + 2] = fill.b;
+        data[idx + 3] = fill.a;
 
-            if (x > 0) {
-                if (pixels.data[linearCoordinates - 4] == originalColor.r &&
-                    pixels.data[linearCoordinates - 4 + 1] == originalColor.g &&
-                    pixels.data[linearCoordinates - 4 + 2] == originalColor.b) {
-                    if (!reachedLeft) {
-                        // if(isInPixelStack(x - 1, y, pixelStack)){
-                        //     pixelStack.push({x: x - 1, y: y});
-                        //     reachedLeft = true;
-                        // }
-                        pixelStack.push({x: x - 1, y: y});
-                        reachedLeft = true;
+        // 4-way neighbors
+        stack.push([x + 1, y]);
+        stack.push([x - 1, y]);
+        stack.push([x, y + 1]);
+        stack.push([x, y - 1]);
+    }
+
+    // After normal fill, expand the region slightly to kill halo:
+    dilateFillRegion(imageData, fill);
+
+    context.putImageData(imageData, 0, 0);
+}
+
+// EXPAND / DILATE FILLED REGION BY 1 PIXEL
+function dilateFillRegion(imageData, fill, iterations = 1) {
+    const width = imageData.width;
+    const height = imageData.height;
+    const data = imageData.data;
+
+    const idxFor = (x, y) => (y * width + x) * 4;
+
+    for (let it = 0; it < iterations; it++) {
+        // Work on a copy each iteration to avoid chain reactions within the same step
+        const original = new Uint8ClampedArray(data);
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const idx = idxFor(x, y);
+
+                const r = original[idx];
+                const g = original[idx + 1];
+                const b = original[idx + 2];
+                const a = original[idx + 3];
+
+                // Only expand from pixels that are already fill color
+                if (!colorsEqualApproxRGBA(r, g, b, a, fill.r, fill.g, fill.b, fill.a, 0)) {
+                    continue;
+                }
+
+                // Set all 8 neighbors to fill color
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+
+                        const nIdx = idxFor(nx, ny);
+                        data[nIdx]     = fill.r;
+                        data[nIdx + 1] = fill.g;
+                        data[nIdx + 2] = fill.b;
+                        data[nIdx + 3] = fill.a;
                     }
-                } else if (reachedLeft) {
-                    reachedLeft = false;
                 }
             }
-
-            if (x < canvas.width - 1) {
-                if (pixels.data[linearCoordinates + 4] == originalColor.r &&
-                    pixels.data[linearCoordinates + 4 + 1] == originalColor.g &&
-                    pixels.data[linearCoordinates + 4 + 2] == originalColor.b) {
-                    if (!reachedRight) {
-                        // if(isInPixelStack(x + 1, y, pixelStack)) {
-                        //     pixelStack.push({x: x + 1, y: y});
-                        //     reachedRight = true;
-                        // }
-                        pixelStack.push({x: x + 1, y: y});
-                        reachedRight = true;
-                    }
-                } else if (reachedRight) {
-                    reachedRight = false;
-                }
-            }
-
-            linearCoordinates += canvas.width * 4;
         }
     }
-    context.putImageData( pixels, 0, 0 ) ;
 }
-
-function isInPixelStack( x, y, pixelStack ) {
-    for(let i=0 ; i<pixelStack.length ; i++ ) {
-        if( pixelStack[i].x==x && pixelStack[i].y==y ) {
-            return true ;
-        }
-    }
-    return false ;
-}
-
-function generate_random_color() {
-    var letters = '0123456789ABCDEF' ;
-    var color = '#' ;
-    for( var i=0; i<6; i++ ) {
-        color += letters[Math.floor(Math.random() * 16)] ;
-    }
-    return color ;
-}
-
-// adapted from https://stackoverflow.com/questions/5623838/rgb-to-hex-and-hex-to-rgb
-function color_to_rgba( color ) {
-    if( color[0]=="#" ) { // hex notation
-        color = color.replace( "#", "" ) ;
-        var bigint = parseInt(color, 16);
-        var r = (bigint >> 16) & 255;
-        var g = (bigint >> 8) & 255;
-        var b = bigint & 255;
-        return {r:r,
-            g:g,
-            b:b,
-            a:255} ;
-    } else if( color.indexOf("rgba(")==0 ) { // already in rgba notation
-        color = color.replace( "rgba(", "" ).replace( " ", "" ).replace( ")", "" ).split( "," ) ;
-        return {r:color[0],
-            g:color[1],
-            b:color[2],
-            a:color[3]*255} ;
-    } else {
-        console.error( "warning: can't convert color to rgba: " + color ) ;
-        return {r:0,
-            g:0,
-            b:0,
-            a:0} ;
-    }
-}
-
-
-// Stari Flood fill function za Fill Color tool
-// function stariFloodFill(position) {
-//     const imageData = context.getImageData(0,0, canvas.width,canvas.height);
-//     console.log(context.getImageData(0, 0, canvas.width, canvas.height));
-//     const data = imageData.data;
-//     const width = imageData.width;
-//     const height = imageData.height;
-//     // const stack = [[position.x, position.y]];
-//     const stack = [[Math.floor(position.x), Math.floor(position.y)]];
-//     const visited = new Set();
-//     let pixelCount = 0;
-//
-//     let targetColor = getPixelColor(data, position.x, position.y);
-//
-//     //tretiramo transparentne tjst "neobojene" piksele kao bele
-//     if (targetColor[3] === 0) {
-//         targetColor[3] = 255;
-//     }
-//
-//     if (colorsMatch(targetColor, selectedColor)) return;
-//
-//     while(stack.length > 0){
-//         const [x,y] = stack.pop();
-//         const cx = Math.floor(x);
-//         const cy = Math.floor(y);
-//
-//         const key = `${cx},${cy}`;
-//         if (visited.has(key)) continue;
-//         visited.add(key);
-//
-//         // proveravamo granice canvasa
-//         if(cx < 0 || cy < 0 || cx >= canvas.width || cy >= canvas.height) {
-//             console.log(`Skipping out-of-bounds pixel at (${cx}, ${cy})`);
-//             continue;
-//         }
-//
-//         const currentColor = getPixelColor(data, cx, cy);
-//         // console.log("Current:", currentColor, "Target:", targetColor);
-//
-//         //ova linija se preskace ukoliko nisu iste boje - samo nam je za exit kada se nadje ista boja
-//         if (!colorsMatch(currentColor, targetColor)) {
-//             continue;
-//         }
-//
-//         // farbamo pixel
-//         setPixelColor(data, cx, cy, selectedColor);
-//
-//         //dodajemo komsije
-//         stack.push([cx - 1, cy]); //levo
-//         stack.push([cx + 1, cy]); //desno
-//         stack.push([cx, cy - 1]); //dole
-//         stack.push([cx, cy + 1]); //gore
-//
-//         // Progress tracking (for large fills)
-//         pixelCount++;
-//         if (pixelCount % 1000 === 0) {
-//             console.log(`Processed ${pixelCount} pixels...`);
-//         }
-//
-//     }
-//
-//     // context.clearRect(0, 0, canvas.width, canvas.height);
-//     context.putImageData(imageData, 0, 0);
-// }
-
-// function getPixelColor (data, x, y) {
-//     const index = (y * canvas.width +x) *4;
-//     const r = data[index];
-//     const g = data[index + 1];
-//     const b = data[index + 2];
-//     const a = data[index + 3];
-//
-//     console.log(`Pixel at (${x}, ${y}):`, [r,g,b,a]);
-//     if(a < 255) return [r,g,b,255];
-//     return [r,g,b,a];
-// }
-//
-// function setPixelColor (data, x, y, color) {
-//     const index = (y * canvas.width + x) * 4;
-//     const rgb = getRGB(selectedColor);
-//     data[index] = rgb[0];     // Red
-//     data[index + 1] = rgb[1]; // Green
-//     data[index + 2] = rgb[2]; // Blue
-//     data[index + 3] = 255;     // Alpha (fully opaque)
-// }
-//
-// function colorsMatch(color1, color2) {
-//     const match =
-//         color1[0] === color2[0] &&
-//         color1[1] === color2[1] &&
-//         color1[2] === color2[2] &&
-//         color1[3] === color2[3];
-//
-//     return match;
-// }
 
 function getRGB(rgbString){
     // Use a regular expression to extract the numbers from the string
@@ -605,7 +505,6 @@ function getRGB(rgbString){
 }
 
 // Image upload
-
 function setupImageUploader() {
     const imageUploader = document.getElementById("imageUploader");
 
@@ -994,9 +893,7 @@ function deleteSelection() {
     console.log("Deleted the selection!");
 }
 
-//PRONADJENO NA NETU
 // --- Keyboard Shortcuts ---
-// Add this near the bottom of your script, after selection logic is initialized
 window.addEventListener('keydown', (e) => {
     if(selectedTool !== 'select') return;
 
