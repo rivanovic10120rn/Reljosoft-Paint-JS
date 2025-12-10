@@ -5,7 +5,11 @@ const fillShapeCheckbox = document.querySelector("#fill-shape");
 const sizeSlider = document.querySelector("#size-slider");
 const colorButtons = document.querySelectorAll(".colors .option");
 const customColor = document.querySelector("#custom-color");
-const undoredoButtons = document.querySelectorAll(".actions-toolbar li");
+// const undoredoButtons = document.querySelectorAll(".actions-toolbar li");
+const undoButton = document.getElementById("undo");
+const redoButton = document.getElementById("redo");
+const copyButton = document.getElementById("copy");
+const pasteButton = document.getElementById("paste");
 const clearCanvasButton = document.querySelector(".clear");
 const saveImageButton = document.querySelector(".save");
 const insertImageButton = document.querySelector(".upload");
@@ -17,23 +21,26 @@ let drawingHistory = [];
 let redoHistory = [];
 let currentStep = 0;
 let isDrawing = false;
-let brushSize = 25;
+let brushSize = 5;
 // let selectedColor = "#000";
 let selectedColor = "rgb(0, 0, 0)"
 let selectedTool = "brush";
 let prevMousePoint = { x: 0, y: 0 };
 let canvasSnapshot = null;
+let selectionMode = "regular"; // regular | lasso
 
 // Canvas Init
 const initCanvas = () => {
     document.documentElement.style.setProperty('--doc-height', `${window.innerHeight}px`);
-    const dpr = window.devicePixelRatio || 1;
+
     const canvasRect = canvas.getBoundingClientRect();
-    canvas.width = canvasRect.width * dpr;
-    canvas.height = canvasRect.height * dpr;
-    context.scale(dpr, dpr);
+    canvas.width = canvasRect.width;
+    canvas.height = canvasRect.height;
+
+    context.setTransform(1, 0, 0, 1, 0, 0);
     setupImageUploader();
     // context.imageSmoothingEnabled= false;
+    syncOverlaySize();
 }
 
 // Canvas reset
@@ -115,9 +122,25 @@ const activateUndoRedo = (selectedButton) => {
 
 // Uzimanje trenutne lokacije kursora
 const cursorLocation = (e) => {
-    let x = ("ontouchstart" in window ? e.touches?.[0]?.pageX : e.pageX) - canvas.offsetLeft;
-    let y = ("ontouchstart" in window ? e.touches?.[0]?.pageY : e.pageY) - canvas.offsetTop;
-    return { x, y };
+    // let x = ("ontouchstart" in window ? e.touches?.[0]?.pageX : e.pageX) - canvas.offsetLeft;
+    // let y = ("ontouchstart" in window ? e.touches?.[0]?.pageY : e.pageY) - canvas.offsetTop;
+    // return { x, y };
+
+    const rect = canvas.getBoundingClientRect();
+    let clientX, clientY;
+
+    if(e.touches && e.touches[0]) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    }
+
+    return{
+        x: clientX - rect.left,
+        y: clientY - rect.top
+    };
 }
 
 // Crtanje Linije
@@ -174,6 +197,13 @@ const drawStart = (e) => {
     canvasSnapshot = context.getImageData(0, 0, canvas.width, canvas.height);
     if (selectedTool === "fill") {
         floodFill(prevMousePoint, getRGB(selectedColor));
+    } else if(selectedTool === "select") {
+        context.lineWidth = 1;
+        startSelection(e);
+    } else if(selectedTool === "selectLasso") {
+        context.lineWidth = 1;
+        selectionMode = "lasso";
+        startSelection(e);
     } else if (selectedTool === "brush" || selectedTool === "eraser") {
         context.strokeStyle = selectedTool === "eraser" ? "#fff" : selectedColor;
         context.lineTo(prevMousePoint.x, prevMousePoint.y);
@@ -186,6 +216,12 @@ const drawing = (e) => {
     if (!isDrawing) return;
     e.preventDefault();
     let position = cursorLocation(e);
+
+    if (selectedTool === "select"){
+        updateSelection(e);
+        return; //moramo izdvojiti da bi crtalo iskljucivo na overlayu i ne na canvasu
+    }
+
     context.clearRect(0,0,canvas.width,canvas.height);
     context.putImageData(canvasSnapshot, 0, 0);
 
@@ -202,6 +238,7 @@ const drawing = (e) => {
     } else if(selectedTool === "triangle"){
         drawTriangle(position);
     }
+
     context.stroke();
 }
 
@@ -209,6 +246,9 @@ const drawing = (e) => {
 const drawStop = () => {
     if (!isDrawing) return;
     isDrawing = false;
+    if (selectedTool === "select") {
+        stopSelection();
+    }
     saveDrawingState();
 }
 
@@ -246,11 +286,33 @@ customColor.addEventListener("input", (e) => {
 });
 
 // undo i redo
-undoredoButtons.forEach(button => {
-    button.addEventListener("click", () => activateUndoRedo(button));
-});
+// undoredoButtons.forEach(button => {
+//     button.addEventListener("click", () => activateUndoRedo(button));
+// });
+
+if (undoButton && redoButton) {
+    undoButton.addEventListener("click", () => activateUndoRedo(undoButton));
+    redoButton.addEventListener("click", () => activateUndoRedo(redoButton));
+}
 
 //copy i paste
+
+if (copyButton) {
+    copyButton.addEventListener("click", () => {
+        if (selection && selection.imageData) {
+            copySelection();
+        }
+    });
+}
+
+if (pasteButton) {
+    pasteButton.addEventListener("click", () => {
+        if (selectionClipboard) {
+            pasteSelection();
+        }
+    });
+}
+
 
 // Cuvanje slike na kanvasu
 saveImageButton.addEventListener("click", () => {
@@ -277,6 +339,7 @@ window.addEventListener("load", () => {
 })
 
 window.addEventListener("orientationchange", resetDrawingState);
+
 window.addEventListener("resize", () => {
     resetCanvas();
     loadLocalStorageDrawing();
@@ -433,100 +496,100 @@ function color_to_rgba( color ) {
 
 
 // Stari Flood fill function za Fill Color tool
-function stariFloodFill(position) {
-    const imageData = context.getImageData(0,0, canvas.width,canvas.height);
-    console.log(context.getImageData(0, 0, canvas.width, canvas.height));
-    const data = imageData.data;
-    const width = imageData.width;
-    const height = imageData.height;
-    // const stack = [[position.x, position.y]];
-    const stack = [[Math.floor(position.x), Math.floor(position.y)]];
-    const visited = new Set();
-    let pixelCount = 0;
+// function stariFloodFill(position) {
+//     const imageData = context.getImageData(0,0, canvas.width,canvas.height);
+//     console.log(context.getImageData(0, 0, canvas.width, canvas.height));
+//     const data = imageData.data;
+//     const width = imageData.width;
+//     const height = imageData.height;
+//     // const stack = [[position.x, position.y]];
+//     const stack = [[Math.floor(position.x), Math.floor(position.y)]];
+//     const visited = new Set();
+//     let pixelCount = 0;
+//
+//     let targetColor = getPixelColor(data, position.x, position.y);
+//
+//     //tretiramo transparentne tjst "neobojene" piksele kao bele
+//     if (targetColor[3] === 0) {
+//         targetColor[3] = 255;
+//     }
+//
+//     if (colorsMatch(targetColor, selectedColor)) return;
+//
+//     while(stack.length > 0){
+//         const [x,y] = stack.pop();
+//         const cx = Math.floor(x);
+//         const cy = Math.floor(y);
+//
+//         const key = `${cx},${cy}`;
+//         if (visited.has(key)) continue;
+//         visited.add(key);
+//
+//         // proveravamo granice canvasa
+//         if(cx < 0 || cy < 0 || cx >= canvas.width || cy >= canvas.height) {
+//             console.log(`Skipping out-of-bounds pixel at (${cx}, ${cy})`);
+//             continue;
+//         }
+//
+//         const currentColor = getPixelColor(data, cx, cy);
+//         // console.log("Current:", currentColor, "Target:", targetColor);
+//
+//         //ova linija se preskace ukoliko nisu iste boje - samo nam je za exit kada se nadje ista boja
+//         if (!colorsMatch(currentColor, targetColor)) {
+//             continue;
+//         }
+//
+//         // farbamo pixel
+//         setPixelColor(data, cx, cy, selectedColor);
+//
+//         //dodajemo komsije
+//         stack.push([cx - 1, cy]); //levo
+//         stack.push([cx + 1, cy]); //desno
+//         stack.push([cx, cy - 1]); //dole
+//         stack.push([cx, cy + 1]); //gore
+//
+//         // Progress tracking (for large fills)
+//         pixelCount++;
+//         if (pixelCount % 1000 === 0) {
+//             console.log(`Processed ${pixelCount} pixels...`);
+//         }
+//
+//     }
+//
+//     // context.clearRect(0, 0, canvas.width, canvas.height);
+//     context.putImageData(imageData, 0, 0);
+// }
 
-    let targetColor = getPixelColor(data, position.x, position.y);
-
-    //tretiramo transparentne tjst "neobojene" piksele kao bele
-    if (targetColor[3] === 0) {
-        targetColor[3] = 255;
-    }
-
-    if (colorsMatch(targetColor, selectedColor)) return;
-
-    while(stack.length > 0){
-        const [x,y] = stack.pop();
-        const cx = Math.floor(x);
-        const cy = Math.floor(y);
-
-        const key = `${cx},${cy}`;
-        if (visited.has(key)) continue;
-        visited.add(key);
-
-        // proveravamo granice canvasa
-        if(cx < 0 || cy < 0 || cx >= canvas.width || cy >= canvas.height) {
-            console.log(`Skipping out-of-bounds pixel at (${cx}, ${cy})`);
-            continue;
-        }
-
-        const currentColor = getPixelColor(data, cx, cy);
-        // console.log("Current:", currentColor, "Target:", targetColor);
-
-        //ova linija se preskace ukoliko nisu iste boje - samo nam je za exit kada se nadje ista boja
-        if (!colorsMatch(currentColor, targetColor)) {
-            continue;
-        }
-
-        // farbamo pixel
-        setPixelColor(data, cx, cy, selectedColor);
-
-        //dodajemo komsije
-        stack.push([cx - 1, cy]); //levo
-        stack.push([cx + 1, cy]); //desno
-        stack.push([cx, cy - 1]); //dole
-        stack.push([cx, cy + 1]); //gore
-
-        // Progress tracking (for large fills)
-        pixelCount++;
-        if (pixelCount % 1000 === 0) {
-            console.log(`Processed ${pixelCount} pixels...`);
-        }
-
-    }
-
-    // context.clearRect(0, 0, canvas.width, canvas.height);
-    context.putImageData(imageData, 0, 0);
-}
-
-function getPixelColor (data, x, y) {
-    const index = (y * canvas.width +x) *4;
-    const r = data[index];
-    const g = data[index + 1];
-    const b = data[index + 2];
-    const a = data[index + 3];
-
-    console.log(`Pixel at (${x}, ${y}):`, [r,g,b,a]);
-    if(a < 255) return [r,g,b,255];
-    return [r,g,b,a];
-}
-
-function setPixelColor (data, x, y, color) {
-    const index = (y * canvas.width + x) * 4;
-    const rgb = getRGB(selectedColor);
-    data[index] = rgb[0];     // Red
-    data[index + 1] = rgb[1]; // Green
-    data[index + 2] = rgb[2]; // Blue
-    data[index + 3] = 255;     // Alpha (fully opaque)
-}
-
-function colorsMatch(color1, color2) {
-    const match =
-        color1[0] === color2[0] &&
-        color1[1] === color2[1] &&
-        color1[2] === color2[2] &&
-        color1[3] === color2[3];
-
-    return match;
-}
+// function getPixelColor (data, x, y) {
+//     const index = (y * canvas.width +x) *4;
+//     const r = data[index];
+//     const g = data[index + 1];
+//     const b = data[index + 2];
+//     const a = data[index + 3];
+//
+//     console.log(`Pixel at (${x}, ${y}):`, [r,g,b,a]);
+//     if(a < 255) return [r,g,b,255];
+//     return [r,g,b,a];
+// }
+//
+// function setPixelColor (data, x, y, color) {
+//     const index = (y * canvas.width + x) * 4;
+//     const rgb = getRGB(selectedColor);
+//     data[index] = rgb[0];     // Red
+//     data[index + 1] = rgb[1]; // Green
+//     data[index + 2] = rgb[2]; // Blue
+//     data[index + 3] = 255;     // Alpha (fully opaque)
+// }
+//
+// function colorsMatch(color1, color2) {
+//     const match =
+//         color1[0] === color2[0] &&
+//         color1[1] === color2[1] &&
+//         color1[2] === color2[2] &&
+//         color1[3] === color2[3];
+//
+//     return match;
+// }
 
 function getRGB(rgbString){
     // Use a regular expression to extract the numbers from the string
@@ -576,301 +639,408 @@ function setupImageUploader() {
     });
 }
 
-//SELECTION ZONE BABY
+//===========================
+// NOVI SELECTION TOOL
+//===========================
 
-let selectionMode = "regular"; // regular | lasso
+const overlay = document.getElementById("selectionCanvas");
+const atakan = overlay.getContext("2d");
+
+function syncOverlaySize() {
+    const rect = canvas.getBoundingClientRect();
+    overlay.width = rect.width;
+    overlay.height = rect.height;
+}
+
+// Selection state
+let selection = null;
+let isDragging = null;
+let isResizing = null;
+let resizeHandle = null;
+
+// Drag offsets
+let dragOffsetX = null;
+let dragOffsetY = null;
+
+//clipboard famozni (inside joke)
+let selectionClipboard = null;
+
+// Resize pravougaonici velicina
+const HANDLE_SIZE = 8;
+
+// Pracenje pozicije misa na drfugom canvasu
 let isMouseDown = false;
-let selectionX = 0;
-let selectionY = 0;
-let canvasBackup = null;
-let activeSelection = null; // stores selection info
-let lassoPoints = [];
+let startX = 0;
+let startY = 0;
 
-// Selection data structure:
-// {x, y, w, h, imageData, dragging, offsetX, offsetY, resizing, resizeHandle}
-
-canvas.addEventListener("mousedown", startSelection);
-canvas.addEventListener("mousemove", drawSelection);
-canvas.addEventListener("mouseup", stopSelection);
-
+//===========================
+// START SELECTION
+//===========================
 function startSelection(e) {
-    const selectionRectangle = canvas.getBoundingClientRect();
-    selectionX = e.clientX - selectionRectangle.left;
-    selectionY = e.clientY - selectionRectangle.right;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
     isMouseDown = true;
-    canvasBackup = context.getImageData(0,0, canvas.width, canvas.height);
+    startX = mx;
+    startY = my;
 
-    if (activeSelection) {
-        const handle = isOverResizeHandle(selectionX, selectionY);
+    //ako postoji selekcija gledamo da li prevlacimo ili menjamo velicinu
+    if(selection) {
+        const handle = hitTestHandle(mx, my);
         if(handle) {
-            activeSelection.resizing = true;
-            activeSelection.resizeHandle = handle;
+            isResizing = true;
+            resizeHandle = handle;
+
+            // Grab current image data and clear original rectangle
+            selection.imageData = context.getImageData(
+                selection.x,
+                selection.y,
+                selection.width,
+                selection.height
+            );
+            clearSelectionArea(selection.x, selection.y, selection.width, selection.height);
             return;
         }
 
-        if (insideSelection(selectionX, selectionY)){
-            activeSelection.dragging = true;
-            activeSelection.offsetX = selectionX - activeSelection.x;
-            activeSelection.offsetY = selectionY - activeSelection.y;
+        if(insideSelection(mx, my)) {
+            isDragging = true;
+            dragOffsetX = mx - selection.x;
+            dragOffsetY = my - selection.y;
+
+            selection.imageData = context.getImageData(
+                selection.x,
+                selection.y,
+                selection.width,
+                selection.height
+            );
+            clearSelectionArea(selection.x, selection.y, selection.width, selection.height);
             return;
         }
 
-        activeSelection = null;
+        //ako kliknemo van selekcije onda ka uklanjamo
+        selection = null;
+        // deleteSelection();
+        redrawOverlay();
+        return;
     }
 
-    if (selectionMode === "regular") {
-        activeSelection = {x: selectionX, y: selectionY, width: 0, height: 0};
-    }
-
-    if (selectionMode === "lasso") {
-        lassoPoints = [{x: selectionX, y: selectionY}];
-    }
+    //nova selekcija
+    selection = {
+        x: mx,
+        y: my,
+        width: 0,
+        height: 0,
+        imageData: null
+    };
 }
 
-function drawSelection(e) {
+//===========================
+// DRAW SELECTION - DRAGGING
+//===========================
+function updateSelection(e) {
+    if(!isMouseDown || !selection) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    if(isDragging) {
+        selection.x = mx - dragOffsetX;
+        selection.y = my - dragOffsetY;
+        redrawOverlay();
+        return;
+    }
+
+    if(isResizing) {
+        resizeSelection(mx, my);
+        redrawOverlay();
+        return;
+    }
+
+    //pravljenje nove selekcije nakon pustanja
+    selection.width = mx - startX;
+    selection.height = my - startY;
+    redrawOverlay();
+}
+
+//===========================
+// END SELECTION - STOP
+//===========================
+function stopSelection() {
     if(!isMouseDown) return;
-    const rectangle = canvas.getBoundingClientRect();
-    const x = e.clientX - rectangle.left;
-    const y = e.clientY - rectangle.top;
-
-    if(activeSelection?.dragging){
-        activeSelection.x = x - activeSelection.offsetX;
-        activeSelection.y = y - activeSelection.offsetY;
-        redrawSelection();
-        return;
-    }
-
-    if(activeSelection?.resizing){
-        resizeSelection(x,y);
-        redrawSelection();
-        return;
-    }
-
-    context.putImageData(canvasBackup, 0, 0);
-    if (selectionMode === "regular") {
-        activeSelection.width = x - selectionX;
-        activeSelection.height = y - selectionY;
-        drawRectOutline(activeSelection);
-    }
-    if (selectionMode === "lasso") {
-        lassoPoints.push({x,y});
-        drawLassoOutline();
-    }
-}
-
-function stopSelection(e) {
     isMouseDown = false;
-    if (selectionMode === "regular") finalizeRectSelection();
-    if (selectionMode === "lasso") finalizeLassoSelection();
+    if(!selection) return;
+
+    finalizeRect(selection);
+
+    if(!selection.imageData) {
+        selection.imageData = context.getImageData(
+            selection.x,
+            selection.y,
+            selection.width,
+            selection.height
+        );
+        clearSelectionArea(selection.x, selection.y, selection.width, selection.height);
+
+    }
+    // else if(!isDragging && !isResizing) {
+    //     clearSelectionArea(selection.x, selection.y, selection.width, selection.height);
+    // }
+
+    if(selection.imageData) {
+        const tmp = document.createElement("canvas");
+        tmp.width = selection.imageData.width;
+        tmp.height = selection.imageData.height;
+        const tcontext = tmp.getContext("2d");
+        tcontext.putImageData(selection.imageData, 0, 0);
+
+        context.drawImage(
+            tmp,
+            selection.x,
+            selection.y,
+            selection.width,
+            selection.height
+        );
+
+        selection.imageData = context.getImageData(
+            selection.x,
+            selection.y,
+            selection.width,
+            selection.height
+        );
+    }
+
+    // context.putImageData(selection.imageData, selection.x, selection.y);
+
+    isDragging = false;
+    isResizing = false;
+    redrawOverlay();
+    saveDrawingState();
 }
 
-// RECTANGLE SELECT (EL NORMAL) BBY
+//===========================
+// UTILS - razonoda
+//===========================
 
-function drawRectOutline(selection){
-    context.strokeStyle = "black";
-    context.setLineDash([6,3]);
-    context.strokeRect(selection.x, selection.y, selection.width, selection.height);
+function finalizeRect(selection) {
+    if(selection.width < 0) {
+        selection.x += selection.width;
+        selection.width = Math.abs(selection.width);
+    }
+    if(selection.height < 0) {
+        selection.y += selection.height;
+        selection.height = Math.abs(selection.height);
+    }
 }
 
-function finalizeRectSelection() {
-    const selection = fixRect(activeSelection);
-    activeSelection = selection;
-    activeSelection.imageData = context.getImageData(selection.x, selection.y, selection.width, selection.height);
-    redrawSelection();
+function insideSelection(x, y) {
+    return(
+        x >= selection.x &&
+        x <= selection.x + selection.width &&
+        y >= selection.y &&
+        y <= selection.y + selection.height
+    );
 }
 
-// LASSO SELECT BABY (ubicu se)
-
-function drawLassoOutline() {
-    context.strokeStyle = "black";
-    context.setLineDash([6,3]);
-    context.beginPath();
-    lassoPoints.forEach((p, i) => {
-        if (i === 0) context.moveTo(p.x, p.y);
-        else context.lineTo(p.x, p.y);
-    });
-    context.stroke();
+function clearSelectionArea(x, y, width, height) {
+    context.clearRect(x, y, width, height);
+    context.fillStyle = "#fff";
+    context.fillRect(x, y, width, height);
 }
 
-function finalizeLassoSelection() {
-    context.putImageData(canvasBackup, 0, 0);
-    const bounds = getLassoBounds();
-    const temporaryCanvas = document.createElement("canvas");
-    temporaryCanvas.width = bounds.width;
-    temporaryCanvas.height = bounds.height;
-    const temporaryContext = temporaryCanvas.getContext("2d");
-    temporaryContext.putImageData(context.getImageData(bounds.x,bounds.y,bounds.width,bounds.height), 0 , 0);
-
-    activeSelection = {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-        imageData: temporaryContext.getImageData(0,0,bounds.width,bounds.height),
-    };
-
-    redrawSelection();
-}
-
-function getLassoBounds() {
-    const xs = lassoPoints.map(p => p.x);
-    const ys = lassoPoints.map(p => p.y);
-    return {
-        x: Math.min(...xs),
-        y: Math.min(...ys),
-        width: Math.max(...xs) - Math.min(...xs),
-        height: Math.max(...ys) - Math.min(...ys),
-    };
-}
-
-// DRAG & MOVE BABY
-
-function insideSelection(x,y) {
-    const selection = activeSelection;
-    return x >= selection.x && x <= selection.x + selection.width && y >= selection.y && y <= selection.y + selection.height;
-}
-
-// RESIZE HANDLES BABY
-
-function drawResizeHandles(selection){
-    const size = 8;
-    const handles = getResizeHandles(selection);
-
-    context.fillStyle = "white";
-    context.strokeStyle = "black";
-    handles.forEach(i => {
-        context.fillRect(i.x - size/2, i.y - size/2, size, size);
-        context.strokeRect(i.x - size/2, i.y - size/2, size, size);
-    });
-}
-
-function getResizeHandles(selected){
+function getHandles(selection) {
     return[
-        {name: "topleft", x: selected.x, y: selected.y},
-        {name: "topright", x: selected.x + selected.width , y: selected.y},
-        {name: "bottomleft", x: selected.x, y: selected.y + selected.height },
-        {name: "bottomright", x: selected.x + selected.width, y: selected.y + selected.height},
+        {name: "topleft", x: selection.x, y: selection.y},
+        {name: "topright", x: selection.x + selection.width, y: selection.y},
+        {name: "bottomleft", x: selection.x, y: selection.y + selection.height},
+        {name: "bottomright", x: selection.x + selection.width, y: selection.y + selection.height}
     ];
 }
 
-function isOverResizeHandle(x,y) {
-    const handles = getResizeHandles(activeSelection);
-    const size = 10;
+function hitTestHandle(x, y) {
+    if(!selection) return null;
 
-    for (let i of handles) {
-        if (x >= i.x - size && x <= i.x + size && y >= i.y - size && y <= i.y){
-            return i.name;
+    for(const h of getHandles(selection)) {
+        if(
+            x >= h.x - HANDLE_SIZE &&
+            x <= h.x + HANDLE_SIZE &&
+            y >= h.y - HANDLE_SIZE &&
+            y <= h.y + HANDLE_SIZE
+        ) {
+            return h.name;
         }
     }
     return null;
 }
 
 function resizeSelection(mx, my) {
-    const selection = activeSelection;
-    const old = { ...s };
-
-    if (selection.resizeHandle === "bottomright") {
-        selection.width = mx - selection.x;
-        selection.height = my - selection.y;
-    }
-    if (selection.resizeHandle === "topright") {
-        selection.height = old.height + (old.height - my);
-        selection.y = my;
-        selection.width = mx - old.x;
-    }
-    if (selection.resizeHandle === "bottomleft") {
-        selection.width = old.width + (old.x - mx);
-        selection.x = mx;
-        selection.height = my - old.y;
-    }
-    if (selection.resizeHandle === "topleft") {
-        selection.width = old.width + (old.x - mx);
-        selection.x = mx;
-        selection.height = old.height + (old.y - my);
-        selection.y = my;
+    switch (resizeHandle) {
+        case "topleft":
+            selection.width += selection.x - mx;
+            selection.x = mx;
+            selection.height += selection.y - my;
+            selection.y = my;
+            break;
+        case "topright":
+            selection.height += selection.y - my;
+            selection.y = my;
+            selection.width = mx - selection.x;
+            break;
+        case "bottomleft":
+            selection.width += selection.x - mx;
+            selection.x = mx;
+            selection.height = my - selection.y;
+            break;
+        case "bottomright":
+            selection.width = mx - selection.x;
+            selection.height = my - selection.y;
+            break;
     }
 }
 
-// COPY PASTE (DELETE MOZDA?)
+//===========================
+// CORE SPAJANJA CANVASA
+//===========================
 
-function copySelection(){
-    return activeSelection ? activeSelection.imageData : null;
+function redrawOverlay() {
+    atakan.clearRect(0, 0, overlay.width, overlay.height);
+    if(!selection) return;
+
+    if((isDragging || isResizing) && selection.imageData) {
+        const tmp = document.createElement("canvas");
+        tmp.width = selection.imageData.width;
+        tmp.height = selection.imageData.height;
+        const tcontext = tmp.getContext("2d");
+        tcontext.putImageData(selection.imageData, 0, 0);
+
+        atakan.drawImage(
+            tmp,
+            selection.x,
+            selection.y,
+            selection.width,
+            selection.height
+        );
+    }
+
+    atakan.strokeStyle = "black";
+    atakan.setLineDash([6, 4]);
+    atakan.strokeRect(selection.x, selection.y, selection.width, selection.height);
+
+    for(const h of getHandles(selection)) {
+        atakan.fillStyle = "#fff";
+        atakan.strokeStyle = "black";
+        atakan.fillRect(h.x - HANDLE_SIZE/2, h.y - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE);
+        atakan.strokeRect(h.x - HANDLE_SIZE/2, h.y - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE);
+    }
+
+    atakan.setLineDash([]);
 }
 
-function pasteSelection(data) {
-    if (!data) return;
-    activeSelection = {
-        x: 20,
-        y: 20,
-        width: data.width,
-        height: data.height,
-        imageData: data,
+//===========================
+// COPY/PASTE/DELETE
+//===========================
+
+function copySelection() {
+    if(!selection || !selection.imageData) return;
+
+    const original = selection.imageData;
+    selectionClipboard = new ImageData(
+        new Uint8ClampedArray(original.data),
+        original.width,
+        original.height
+    );
+    console.log("Copied the selectioN!");
+}
+
+function pasteSelection() {
+    if(!selectionClipboard) return;
+
+    const x = 20;
+    const y = 20;
+
+    const tmp = document.createElement("canvas");
+    tmp.width = selectionClipboard.width;
+    tmp.height = selectionClipboard.height;
+    const tcontext = tmp.getContext("2d");
+    tcontext.putImageData(selectionClipboard, 0, 0);
+    context.drawImage(tmp, x, y);
+
+    selection = {
+        x,
+        y,
+        width: selectionClipboard.width,
+        height: selectionClipboard.height,
+        imageData: context.getImageData(
+            x,
+            y,
+            selectionClipboard.width,
+            selectionClipboard.height
+        )
     };
-    redrawSelection();
+
+    redrawOverlay();
+    saveDrawingState();
+    console.log("Pasted the selection!");
 }
 
-function deleteSelection(){
-    if(!activeSelection) return;
-    context.clearRect(activeSelection.x, activeSelection.y, activeSelection.width, activeSelection.height);
-    activeSelection = null;
-}
+function deleteSelection() {
+    if(!selection) return;
 
-// RAZONODA BEBO
+    clearSelectionArea(selection.x, selection.y, selection.width, selection.height);
+    selection = null;
 
-function redrawSelection() {
-    context.putImageData(canvasBackup, 0, 0);
-    if(!activeSelection) return;
-
-    context.putImageData(activeSelection.imageData, activeSelection.x, activeSelection.y);
-    drawRectOutline(activeSelection);
-    drawResizeHandles(activeSelection);
-}
-
-function fixRect(selection) {
-    let {x,y,width,height} = selection;
-    if (width<0) {
-        x += width;
-        width =Math.abs(width);
-    }
-    if (height<0) {
-        y += height;
-        height = Math.abs(height);
-    }
-    return {x,y,width,height};
+    redrawOverlay();
+    saveDrawingState(); //delete postane neopoziv
+    console.log("Deleted the selection!");
 }
 
 //PRONADJENO NA NETU
 // --- Keyboard Shortcuts ---
 // Add this near the bottom of your script, after selection logic is initialized
 window.addEventListener('keydown', (e) => {
+    if(selectedTool !== 'select') return;
+
+    // CTRL + C => Copy
     if (e.ctrlKey && e.key.toLowerCase() === 'c') {
-// CTRL + C => Copy
-        if (selection && selection.active) {
+        if (selection && selection.imageData) {
             copySelection();
-            console.log('Copied selection');
         }
         e.preventDefault();
     }
+    // CTRL + V => Paste
     if (e.ctrlKey && e.key.toLowerCase() === 'v') {
-// CTRL + V => Paste
-        if (clipboard) {
+        if (selectionClipboard) { //napraviti clipboard nekako
             pasteSelection();
-            console.log('Pasted selection');
         }
         e.preventDefault();
     }
+    // DELETE & BACKSPACE => Remove selection
     if (e.key === 'Delete' || e.key === 'Backspace') {
-// DELETE => Remove selection
-        if (selection && selection.active) {
+        if (selection) { //selection && selection.active
             deleteSelection();
-            console.log('Deleted selection');
         }
         e.preventDefault();
     }
+    // ESC => Clear selection
     if (e.key === 'Escape') {
-// ESC => Clear selection
-        deleteSelection(); //clearSelection();
-        console.log('Selection cancelled');
+        if(selection) {
+            selection = null;
+            redrawOverlay();
+            console.log('Selection is cancelled!');
+        }
         e.preventDefault();
     }
 });
+
+
+
+
+
+
+
+
+
+
+
+
+

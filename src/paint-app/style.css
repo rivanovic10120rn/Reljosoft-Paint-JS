@@ -250,6 +250,12 @@ input[type="checkbox"]:checked~label {
     border-radius: 7px;
 }
 
+.drawing-board selectionCanvas {
+    width: 100%;
+    height: 100%;
+    border-radius: 7px;
+}
+
 .big-checkbox {
     transform: scale(1.4);     /* Make it bigger */
     -webkit-transform: scale(1.4);

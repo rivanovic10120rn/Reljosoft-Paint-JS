@@ -54,11 +54,15 @@
               <span class="name"> Fill Color </span>
             </li>
             <li class="option tool" id="select">
-              <span><img src="../assets/icons/tools/icons8-selection-48.png"></span>
+              <span><img src="../assets/icons/tools/icons8-selection-32-new.png"></span>
               <span class="name"> Select </span>
             </li>
+<!--            <li class="option tool" id="selectLasso">-->
+<!--              <span><img src="../assets/icons/tools/icons8-lasso-32.png"></span>-->
+<!--              <span class="name"> Free Form Select </span>-->
+<!--            </li>-->
             <li class="option" id="slider">
-              <input type="range" id="size-slider" min="1" max="50" value="25">
+              <input type="range" id="size-slider" min="1" max="50" value="5">
             </li>
           </ul>
         </div>
@@ -86,14 +90,14 @@
                 <span><img src="../assets/icons/tools/icons8-redo-32.png"></span>
                 <span class="name">Redo</span>
               </li>
-<!--              <li class="option action" id="copy">-->
-<!--                <span><img src="../assets/icons/tools/icons8-copy-32.png"></span>-->
-<!--                <span class="name">Copy</span>-->
-<!--              </li>-->
-<!--              <li class="option action" id="paste">-->
-<!--                <span><img src="../assets/icons/tools/icons8-paste-32.png"></span>-->
-<!--                <span class="name">Paste</span>-->
-<!--              </li>-->
+              <li class="option action" id="copy">
+                <span><img src="../assets/icons/tools/icons8-copy-32.png"></span>
+                <span class="name">Copy</span>
+              </li>
+              <li class="option action" id="paste">
+                <span><img src="../assets/icons/tools/icons8-paste-32.png"></span>
+                <span class="name">Paste</span>
+              </li>
             </ul>
           </div>
         </div>
@@ -114,8 +118,18 @@
         </button>
       </div>
     </section>
-    <section class="drawing-board">
-      <canvas></canvas>
+    <section class="drawing-board" id="canvasSection" style="position: relative;">
+      <canvas id="canvas" style="
+      position: relative;
+      z-index: 0;">
+      </canvas>
+      <canvas id="selectionCanvas" style="
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 10;
+      pointer-events: none;">
+      </canvas>
     </section>
   </div>
 </body>
